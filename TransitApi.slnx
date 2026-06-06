@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TransitApi.Api/TransitApi.Api.csproj" />
+  </Folder>
+</Solution>
