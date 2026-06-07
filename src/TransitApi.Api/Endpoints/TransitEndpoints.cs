@@ -27,15 +27,18 @@ public static class TransitEndpoints
 
                     var departures = await sl.GetDepartures(site.Id);
 
-                    var next = departures
-                        .Where(d => d.LineId == line)
-                        .OrderBy(d => d.Expected)
-                        .FirstOrDefault();
+                    var next = GetNext(departures, (d) => d.LineId == line);
+
+              
 
                     if (next == null)
                         return Results.NotFound();
 
-                    return Results.Ok(Map(next));
+                    return Results.Ok(new
+                    {
+                        site = site.Name,
+                        result = Map(next)
+                    });
                 });
 
         group.MapGet("/next/to", async (
@@ -74,23 +77,20 @@ public static class TransitEndpoints
 
                     var departures = await sl.GetDepartures(site.Id);
 
+                    if (departures is null || departures.Count == 0)
+                        return Results.NotFound();
+
                     var result = departures
                         .Where(d => line == null || d.LineId == line)
                         .OrderBy(d => d.Expected)
                         .Take(10)
-                        .Select(d => new DepartureDto
-                        {
-                            Line = d.LineId,
-                            Destination = d.Destination,
-                            DepartureIn = d.Display,
-                            Expected = d.Expected
-                        })
+                        .Select(Map)
                         .ToList();
 
                     return Results.Ok(new
                     {
                         site = site.Name,
-                        count = departures.Count,
+                        count = result.Count,
                         departures = result
                     });
         });
@@ -153,4 +153,12 @@ public static class TransitEndpoints
         DepartureIn = d.Display,
         Expected = d.Expected
     };
+
+    private static SlDeparture? GetNext(IEnumerable<SlDeparture> deps, Func<SlDeparture, bool> predicate)
+    {
+        return deps
+            .Where(predicate)
+            .OrderBy(d => d.Expected)
+            .FirstOrDefault();
+    }
 }
