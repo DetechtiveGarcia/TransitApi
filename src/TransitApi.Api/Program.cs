@@ -20,6 +20,7 @@ app.MapOpenApi();
 
 //app.UseHttpsRedirection();
 //app.MapOpenApiEndpoints();
+app.MapAudioEndpoints();
 app.MapTransitEndpoints();
 app.MapAiEndpoints();
 
