@@ -15,109 +15,12 @@ public static class AiEndpoints
     {
 
 
-        app.MapPost("/api/ai/ask", async (
-            AiRequest request,
-            HttpClient http,
-            SlService sl,
-            IOptions<OpenAiOptions> options
-        ) =>
+        app.MapPost("/api/ai/ask", async (AiRequest request, AiService aiService) =>
         {
-            if (string.IsNullOrWhiteSpace(options.Value.ApiKey))
-                throw new Exception("Missing OpenAI API key");
+            if (string.IsNullOrWhiteSpace(request.Message))
+                return Results.BadRequest("Message cannot be empty");
 
-            var tools = AiTools.GetTools();
-
-            var messages = new List<object>
-        {
-        new
-        {
-            role = "system",
-            content = """
-                You are a transit AI for Stockholm public transport.
-
-                You MUST use tools for:
-                - next departures
-                - stops
-                - bus lines
-
-                Never guess times.
-            """
-        },
-        new
-        {
-            role = "user",
-            content = request.Message
-        }
-    };
-
-            // 🔁 FIRST CALL
-            var firstResponse = await CallOpenAi(http, messages, tools, options.Value.ApiKey);
-
-            var message = firstResponse
-                .GetProperty("choices")[0]
-                .GetProperty("message");
-
-
-
-
-
-            // 🧠 NO TOOLS → return directly
-            if (!message.TryGetProperty("tool_calls", out var toolCalls) || toolCalls.ValueKind != JsonValueKind.Array || toolCalls.GetArrayLength() == 0)
-            {
-                return Results.Ok(new
-                {
-                    answer = message.GetProperty("content").GetString()
-                });
-            }
-
-            var assistantMessage = new
-            {
-                role = "assistant",
-                content = message.GetProperty("content").GetString(),
-                tool_calls = toolCalls
-            };
-
-            messages.Add(assistantMessage);
-
-            foreach(var toolCall in toolCalls.EnumerateArray())
-{
-                var functionName = toolCall.GetProperty("function").GetProperty("name").GetString();
-                var argsJson = toolCall.GetProperty("function").GetProperty("arguments").GetString();
-
-                if (string.IsNullOrWhiteSpace(argsJson))
-                    continue;
-
-                using var args = JsonDocument.Parse(argsJson);
-
-                object toolResult = functionName switch
-                {
-                    "get_next_departure" => await HandleNext(sl, args),
-                    "get_departures" => await HandleDepartures(sl, args),
-                    "search_stops" => await HandleSearch(sl, args),
-                    _ => throw new Exception("Unknown tool")
-                };
-
-                Console.WriteLine(JsonSerializer.Serialize($"toolResult: {toolResult}"));
-
-                var toolCallId = toolCall.GetProperty("id").GetString();
-
-                messages.Add(new
-                {
-                    role = "tool",
-                    tool_call_id = toolCallId,
-                    content = JsonSerializer.Serialize(toolResult)
-                });
-            }
-
-            // 🔁 SECOND CALL (AI formats final answer)
-            var finalResponse = await CallOpenAi(http, messages, tools, options.Value.ApiKey);
-
-            var answer = finalResponse
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString();
-
+            var answer = await aiService.ProcessUserMessageAsync(request.Message);
             return Results.Ok(new { answer });
         });
     }
