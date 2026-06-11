@@ -97,6 +97,8 @@ public static class AiEndpoints
                     _ => throw new Exception("Unknown tool")
                 };
 
+                Console.WriteLine(JsonSerializer.Serialize($"toolResult: {toolResult}"));
+
                 var toolCallId = toolCall.GetProperty("id").GetString();
 
                 messages.Add(new
@@ -154,6 +156,7 @@ public static class AiEndpoints
         Console.WriteLine("STATUS: " + res.StatusCode);
         Console.WriteLine("OPENAI RAW RESPONSE:");
         Console.WriteLine(json);
+
 
         if (!res.IsSuccessStatusCode)
         {
