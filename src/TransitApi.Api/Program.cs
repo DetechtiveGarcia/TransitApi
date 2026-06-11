@@ -8,7 +8,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<OpenAiOptions>(
     builder.Configuration.GetSection("OpenAI"));
+
 builder.Services.AddOpenApi();
+builder.Services.AddScoped<AiService>();
 builder.Services.AddHttpClient<SlService>();
 builder.Services.AddHttpClient();
 

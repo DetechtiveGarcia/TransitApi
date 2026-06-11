@@ -1,7 +1,7 @@
 ﻿using System.Net.Http.Headers;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+using TransitApi.Api.Services;
 
 namespace TransitApi.Api.Endpoints;
 
@@ -11,73 +11,64 @@ public static class AudioEndpoints
     {
         app.MapPost("/api/audio/transcribe", async (
             IFormFile file,
-            HttpClient http, // Inbakat via .NET Dependency Injection
-            IConfiguration config
+            HttpClient http,
+            IConfiguration config,
+            AiService aiService // Skicka in vår nya AI-tjänst här!
         ) =>
         {
-            // 1. Validera att vi faktiskt fick en fil från mobilen
             if (file == null || file.Length == 0)
-            {
                 return Results.BadRequest(new { error = "No audio file received" });
-            }
 
-            // 2. Hämta din API-nyckel från appsettings.json / User Secrets
             var apiKey = config["OpenAI:ApiKey"];
             if (string.IsNullOrWhiteSpace(apiKey))
-            {
                 return Results.Problem("Missing OpenAI Key in configuration.");
-            }
 
             try
             {
-                // 3. Skapa multipart form-data som OpenAI kräver
+                // 1. SKICKA TILL WHISPER FÖR TRANSKRIBERING
                 using var form = new MultipartFormDataContent();
-
-                // Öppna strömmen från IFormFile
                 using var fileStream = file.OpenReadStream();
                 var fileContent = new StreamContent(fileStream);
-
-                // OpenAI är petiga med Content-Type för ljudfiler
                 fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/m4a");
 
-                // "file" är parameternamnet som OpenAI Whisper förväntar sig
                 form.Add(fileContent, "file", "audio.m4a");
-
-                // Berätta för OpenAI vilken modell som ska användas
                 form.Add(new StringContent("whisper-1"), "model");
 
-                // 4. Bygg requesten till OpenAI
-                var request = new HttpRequestMessage(
-                    HttpMethod.Post,
-                    "https://api.openai.com/v1/audio/transcriptions"
-                );
+                var whisperRequest = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/audio/transcriptions");
+                whisperRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+                whisperRequest.Content = form;
 
-                // Lägg till din Bearer token
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-                request.Content = form;
+                var whisperResponse = await http.SendAsync(whisperRequest);
+                var whisperJson = await whisperResponse.Content.ReadAsStringAsync();
 
-                // 5. Skicka till OpenAI
-                var response = await http.SendAsync(request);
-                var json = await response.Content.ReadAsStringAsync();
-
-                if (!response.IsSuccessStatusCode)
+                if (!whisperResponse.IsSuccessStatusCode)
                 {
-                    // Om OpenAI ger felmeddelande (t.ex. fel API-nyckel eller korrupt fil)
-                    return Results.Problem($"OpenAI API Error: {json}");
+                    return Results.Problem($"Whisper API Error: {whisperJson}");
                 }
 
-                // 6. Parsa svaret och plocka ut "text"
-                using var doc = JsonDocument.Parse(json);
-                var text = doc.RootElement.GetProperty("text").GetString();
+                using var doc = JsonDocument.Parse(whisperJson);
+                var transcribedText = doc.RootElement.GetProperty("text").GetString();
 
-                // Skicka tillbaka den faktiska transkriberingen till Expo-appen
-                return Results.Ok(new { text });
+                if (string.IsNullOrWhiteSpace(transcribedText))
+                {
+                    return Results.Ok(new { answer = "Jag hörde inte riktigt vad du sa, kan du försöka igen?" });
+                }
+
+                // Logga i konsolen så du ser vad du sa under utveckling
+                Console.WriteLine($"[Whisper Transkribering]: {transcribedText}");
+
+                // 2. SKICKA TEXTEN DIREKT TILL AI ROUTERN (SL-VERKTYGEN)
+                var finalAiAnswer = await aiService.ProcessUserMessageAsync(transcribedText);
+
+                // 3. SKICKA TILLBAKA SVARET TILL EXPO
+                // Vi ändrar nyckeln till "text" här så att din frontend-kod (result.text) fortsätter fungera utan ändringar!
+                return Results.Ok(new { text = finalAiAnswer });
             }
             catch (Exception ex)
             {
                 return Results.Problem($"Internal Server Error: {ex.Message}");
             }
         })
-        .DisableAntiforgery(); // Håller dörren öppen för Expo Go
+        .DisableAntiforgery();
     }
 }
