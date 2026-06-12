@@ -5,70 +5,52 @@ using TransitApi.Api.Services;
 
 namespace TransitApi.Api.Endpoints;
 
+public record AudioUploadRequest(string AudioBase64);
 public static class AudioEndpoints
 {
+
     public static void MapAudioEndpoints(this WebApplication app)
     {
         app.MapPost("/api/audio/transcribe", async (
-            IFormFile file,
+            AudioUploadRequest request, // Ändrad parameter
             HttpClient http,
             IConfiguration config,
-            AiService aiService // Skicka in vår nya AI-tjänst här!
+            AiService aiService
         ) =>
-        {
-            if (file == null || file.Length == 0)
-                return Results.BadRequest(new { error = "No audio file received" });
-
-            var apiKey = config["OpenAI:ApiKey"];
-            if (string.IsNullOrWhiteSpace(apiKey))
-                return Results.Problem("Missing OpenAI Key in configuration.");
-
-            try
-            {
-                // 1. SKICKA TILL WHISPER FÖR TRANSKRIBERING
-                using var form = new MultipartFormDataContent();
-                using var fileStream = file.OpenReadStream();
-                var fileContent = new StreamContent(fileStream);
-                fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/m4a");
-
-                form.Add(fileContent, "file", "audio.m4a");
-                form.Add(new StringContent("whisper-1"), "model");
-
-                var whisperRequest = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/audio/transcriptions");
-                whisperRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-                whisperRequest.Content = form;
-
-                var whisperResponse = await http.SendAsync(whisperRequest);
-                var whisperJson = await whisperResponse.Content.ReadAsStringAsync();
-
-                if (!whisperResponse.IsSuccessStatusCode)
                 {
-                    return Results.Problem($"Whisper API Error: {whisperJson}");
-                }
+                    Console.WriteLine("DEBUG: Base64-anrop mottaget!");
 
-                using var doc = JsonDocument.Parse(whisperJson);
-                var transcribedText = doc.RootElement.GetProperty("text").GetString();
+                    try
+                    {
+                        // 1. Konvertera Base64 tillbaka till bytes
+                        byte[] fileBytes = Convert.FromBase64String(request.AudioBase64);
 
-                if (string.IsNullOrWhiteSpace(transcribedText))
-                {
-                    return Results.Ok(new { answer = "Jag hörde inte riktigt vad du sa, kan du försöka igen?" });
-                }
+                        // 2. Skicka till Whisper
+                        using var form = new MultipartFormDataContent();
+                        var fileContent = new ByteArrayContent(fileBytes);
+                        fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/m4a");
+                        form.Add(fileContent, "file", "audio.m4a");
+                        form.Add(new StringContent("whisper-1"), "model");
 
-                // Logga i konsolen så du ser vad du sa under utveckling
-                Console.WriteLine($"[Whisper Transkribering]: {transcribedText}");
+                        var whisperRequest = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/audio/transcriptions");
+                        whisperRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config["OpenAI:ApiKey"]);
+                        whisperRequest.Content = form;
 
-                // 2. SKICKA TEXTEN DIREKT TILL AI ROUTERN (SL-VERKTYGEN)
-                var finalAiAnswer = await aiService.ProcessUserMessageAsync(transcribedText);
+                        var whisperResponse = await http.SendAsync(whisperRequest);
+                        var whisperJson = await whisperResponse.Content.ReadAsStringAsync();
 
-                // 3. SKICKA TILLBAKA SVARET TILL EXPO
-                // Vi ändrar nyckeln till "text" här så att din frontend-kod (result.text) fortsätter fungera utan ändringar!
-                return Results.Ok(new { text = finalAiAnswer });
-            }
-            catch (Exception ex)
-            {
-                return Results.Problem($"Internal Server Error: {ex.Message}");
-            }
-        })
+                        using var doc = JsonDocument.Parse(whisperJson);
+                        var text = doc.RootElement.GetProperty("text").GetString();
+
+                        var finalAiAnswer = await aiService.ProcessUserMessageAsync(text ?? "");
+                        return Results.Ok(new { text = finalAiAnswer });
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error: {ex.Message}");
+                        return Results.Problem(ex.Message);
+                    }
+                })
         .DisableAntiforgery();
     }
 }
