@@ -17,7 +17,9 @@ public static class AiTools
                     properties = new
                     {
                         query = new { type = "string", description = "The name of the stop or station" },
-                        line = new { type = "integer", description = "The line number (e.g., 19, 444)" }
+                        line = new { type = "integer", description = "The line number (e.g., 19, 444)" },
+                        destination = new { type = "string", description = "The name of the final stop" },
+                        transport = new { type = "string", description = "Optional: The transport type (e.g., BUS, METRO, TRAIN, TRAM, FERRY)" }
                     },
                     required = new[] { "query", "line" }
                 }
@@ -37,7 +39,8 @@ public static class AiTools
                     properties = new
                     {
                         query = new { type = "string", description = "The name of the stop or station" },
-                        destination = new { type = "string", description = "Optional: The destination of the trip to filter by" }
+                        destination = new { type = "string", description = "Optional: The destination of the trip to filter by" },
+                        transport = new { type = "string", description = "Optional: The transport type (e.g., BUS, METRO, TRAIN, TRAM, FERRY)" }
                     },
                     required = new[] { "query" }
                 }
