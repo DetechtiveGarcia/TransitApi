@@ -80,6 +80,7 @@ public static class AiEndpoints
     {
         var query = args.RootElement.GetProperty("query").GetString()!;
         var line = args.RootElement.GetProperty("line").GetInt32();
+        var destination = args.RootElement.GetProperty("destination").GetString();
 
         var site = (await sl.SearchSites(query)).FirstOrDefault();
         if (site is null) return new { error = "site not found" };
@@ -88,6 +89,9 @@ public static class AiEndpoints
 
         SlDeparture? next = departures
             .Where(d => d.LineId == line)
+            .Where(d => string.IsNullOrEmpty(destination) || 
+                d.Destination.Contains(destination, StringComparison.OrdinalIgnoreCase) ||
+                d.Direction.Contains(destination, StringComparison.OrdinalIgnoreCase))
             .OrderBy(d => d.Expected)
             .FirstOrDefault();
 
@@ -100,10 +104,12 @@ public static class AiEndpoints
     {
         var query = args.RootElement.GetProperty("query").GetString()!;
 
+        string? transport = args.RootElement.TryGetProperty("transport", out var t) ? t.GetString() : null;
+
         var site = (await sl.SearchSites(query)).FirstOrDefault();
         if (site is null) return new { error = "site not found" };
 
-        return await sl.GetDepartures(site.Id);
+        return await sl.GetDepartures(site.Id, transport);
     }
 
     private static async Task<object> HandleSearch(SlService sl, JsonDocument args)
