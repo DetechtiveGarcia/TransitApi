@@ -11,9 +11,10 @@ public class SlService
 
     public SlService(HttpClient http) => _http = http;
 
-    public async Task<List<SlDeparture>> GetDepartures(int siteId)
+    public async Task<List<SlDeparture>> GetDepartures(int siteId, string? transportType = null)
     {
-        var url = $"https://transport.integration.sl.se/v1/sites/{siteId}/departures?transport=BUS";
+        var transportQuery = string.IsNullOrEmpty(transportType) ? "" : $"&transport={transportType.ToUpper()}";
+        var url = $"https://transport.integration.sl.se/v1/sites/{siteId}/departures?{transportQuery}";
 
         var json = await _http.GetFromJsonAsync<JsonElement>(url);
 
@@ -22,10 +23,11 @@ public class SlService
             .EnumerateArray()
             .Select(d => new SlDeparture
             {
-                LineId = d.GetProperty("line").GetProperty("id").GetInt32(),
                 Destination = d.GetProperty("destination").GetString() ?? "",
+                Direction = d.GetProperty("direction").GetString() ?? "", 
                 Display = d.GetProperty("display").GetString() ?? "",
-                Expected = d.GetProperty("expected").GetDateTime()
+                Expected = d.GetProperty("expected").GetDateTime(),
+                LineId = d.GetProperty("line").GetProperty("id").GetInt32()
             })
             .ToList();
 
@@ -56,8 +58,9 @@ public class SlService
 
 public class SlDeparture
 {
-    public int LineId { get; set; }
     public string Destination { get; set; } = "";
+    public string Direction { get; set; } = "";
     public string Display { get; set; } = "";
     public DateTime Expected { get; set; }
+    public int LineId { get; set; }
 }
