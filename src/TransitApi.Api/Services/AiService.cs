@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using TransitApi.Api.Ai;
 using TransitApi.Api.Endpoints;
+using TransitApi.Api.Interfaces;
 using TransitApi.Api.OpenAi;
 
 namespace TransitApi.Api.Services;
@@ -14,12 +15,14 @@ public class AiService
 {
     private readonly HttpClient _http;
     private readonly SlService _sl;
+    private readonly ITripService _tripService;
     private readonly string _apiKey;
 
-    public AiService(HttpClient http, SlService sl, IConfiguration config)
+    public AiService(HttpClient http, SlService sl, ITripService tripService, IConfiguration config)
     {
         _http = http;
         _sl = sl;
+        _tripService = tripService;
         _apiKey = config["OpenAI:ApiKey"] ?? throw new Exception("Missing OpenAI API key");
     }
 
@@ -34,24 +37,19 @@ public class AiService
                 role = "system",
                 content =
                     """
-                        You are a professional transit AI for Stockholm public transport (SL).
-                        You have access to tools for departures, stops, and all transport modes (metro, bus, train, tram, ferry).
-
                         INSTRUCTIONS:
-                        1. Always use tools for departures, stops, and lines. Never guess times.
-                        2. If the user specifies a destination (e.g., 'to Slussen'), always provide 
-                           that destination as an argument to the tool so the backend can filter results.
-                        3. If no specific destination is mentioned, provide the general next departures.
-                        4. If you cannot find a direct route or matching departure for a specific request, 
-                           you MUST inspect the JSON object returned by the tool. If the JSON contains an 
-                           'alternatives' field, you are REQUIRED to present those options to the user. 
-                           Do not just say no; use the 'alternatives' data to be helpful.
-                        5. LANGUAGE: Always respond in the same language that the user is currently using.
-                        6. Use correct Swedish for traffic information.
-                           When writing about buses, use the word 'avgår' instead of 'avfärdar' or other direct English translations.
-                        7. If the next departure is leaving immediately, or if the user asks for a specific 
-                           line that isn't available, provide at least the next 2-3 alternative departures 
-                           so the user has options.
+                        You are a professional transit AI for Stockholm public transport (SL).
+
+                        You are a professional transit AI for Stockholm public transport (SL).
+                        1. NEVER guess departure times. Always use tools.
+                        2. If the user asks for a trip, route, or travel time between two places (from A to B), you MUST use the `get_route` tool with `originQuery` and `destinationQuery`.
+                        3. If the user asks about a single station only, use `get_departures`.
+                        4. LANGUAGE: Always respond in the same language as the user.
+                        5. Correct Swedish: Use 'avgår' for departures.
+
+                        OTHER RULES:
+                        - LANGUAGE: Always respond in the same language as the user.
+                        - Correct Swedish: Use 'avgår' for buses/trains.
                     """
             },
             new { role = "user", content = userMessage }
@@ -90,9 +88,13 @@ public class AiService
             object toolResult = functionName switch
             {
                 "get_next_departure" => await AiEndpoints.ExecuteNextDepartureTool(_sl, args),
+
                 "get_departures" => await AiEndpoints.HandleDepartures(_sl, args),
-                "search_stops" => await AiEndpoints.HandleSearch(_sl, args),
-                _ => throw new Exception("Unknown tool")
+
+
+                "get_route" => await HandleGetRouteAsync(args.RootElement),
+
+                _ => throw new Exception($"Unknown tool: {functionName}")
             };
 
             var toolCallId = toolCall.GetProperty("id").GetString();
@@ -104,7 +106,7 @@ public class AiService
             {
                 role = "tool",
                 tool_call_id = toolCallId,
-                content = JsonSerializer.Serialize(toolResult)
+                content = serializedResult
             });
         }
 
@@ -127,7 +129,7 @@ public class AiService
     {
         var requestBody = new
         {
-            model = "gpt-4o-mini",
+            model = "gpt-5.4",
             messages,
             tools,
             tool_choice = tools is null ? null : "auto"
@@ -156,6 +158,30 @@ public class AiService
         }
 
         return JsonDocument.Parse(json).RootElement;
+    }
+
+    private async Task<object> HandleGetRouteAsync(JsonElement args)
+    {
+        var originQuery = args.GetProperty("originQuery").GetString() ?? string.Empty;
+        var destQuery = args.GetProperty("destinationQuery").GetString() ?? string.Empty;
+
+        var origin = await _tripService.FindBestStopAsync(originQuery);
+        var dest = await _tripService.FindBestStopAsync(destQuery);
+
+        if (origin is null || dest is null)
+        {
+            return new { error = "Kunde inte hitta en eller båda stationerna." };
+        }
+
+        var trips = await _tripService.GetTripsAsync(
+            origin.Id,
+            dest.Id,
+            args.TryGetProperty("date", out var d) ? d.GetString() : null,
+            args.TryGetProperty("time", out var t) ? t.GetString() : null,
+            default
+        );
+
+        return trips;
     }
 
 }
