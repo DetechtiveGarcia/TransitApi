@@ -29,10 +29,10 @@ public static class TransitEndpoints
 
                     var next = GetNext(departures, (d) => d.LineId == line);
 
-              
+
 
                     if (next == null)
-                        return Results.NotFound();
+                        return Results.Ok(new { message = "Inga avgångar hittades för denna linje just nu." });
 
                     return Results.Ok(new
                     {

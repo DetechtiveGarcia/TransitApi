@@ -32,7 +32,7 @@ public static class AiTools
             function = new
             {
                 name = "get_departures",
-                description = "Get upcoming departures from a stop, including metro, bus, train, tram, and ferry. Supports optional destination filtering.",
+                description = "Get upcoming departures for a specific station/site. Can filter by transport type (METRO, BUS, TRAIN, TRAM, SHIP).",
                 parameters = new
                 {
                     type = "object",
@@ -40,7 +40,7 @@ public static class AiTools
                     {
                         query = new { type = "string", description = "The name of the stop or station" },
                         destination = new { type = "string", description = "Optional: The destination of the trip to filter by" },
-                        transport = new { type = "string", description = "Optional: The transport type (e.g., BUS, METRO, TRAIN, TRAM, FERRY)" }
+                        transport = new { type = "string", description = "Optional filter: The transport type (e.g., BUS, METRO, TRAIN, TRAM, FERRY)" }
                     },
                     required = new[] { "query" }
                 }
