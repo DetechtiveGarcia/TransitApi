@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http.HttpResults;
-using System.Text.Json;
 using TransitApi.Api.Dtos;
+using TransitApi.Api.Interfaces;
 using TransitApi.Api.Services;
 
 namespace TransitApi.Api.Endpoints;
@@ -13,152 +13,55 @@ public static class TransitEndpoints
             .WithTags("Transit")
             .WithDescription("Real-time SL transit endpoints");
 
-
-
-        group.MapGet("/next", async (
-            string query,
-            int line,
-            SlService sl) =>
-                {
-                    var site = (await sl.SearchSites(query)).FirstOrDefault();
-
-                    if (site is null)
-                        return Results.NotFound();
-
-                    var departures = await sl.GetDepartures(site.Id);
-
-                    var next = GetNext(departures, (d) => d.LineId == line);
-
-
-
-                    if (next == null)
-                        return Results.Ok(new { message = "Inga avgångar hittades för denna linje just nu." });
-
-                    return Results.Ok(new
-                    {
-                        site = site.Name,
-                        result = Map(next)
-                    });
-                });
-
-        group.MapGet("/next/to", async (
-            string query,
-            string destination,
-            SlService sl) =>
-                {
-                    var site = (await sl.SearchSites(query)).FirstOrDefault();
-
-                    if (site is null)
-                        return Results.NotFound();
-
-                    var departures = await sl.GetDepartures(site.Id);
-
-                    var next = departures
-                        .Where(d =>
-                            d.Destination.Equals(destination, StringComparison.OrdinalIgnoreCase))
-                        .OrderBy(d => d.Expected)
-                        .FirstOrDefault();
-
-                    if (next is null)
-                        return Results.NotFound();
-
-                    return Results.Ok(Map(next));
-                });
-
+        // 1. Hämtar nästa avgångar för en station (med valfri filtrering på linje)
         group.MapGet("/departures", async (
             string query,
             int? line,
             SlService sl) =>
-                {
-                    var site = (await sl.SearchSites(query)).FirstOrDefault();
-
-                    if (site is null)
-                        return Results.NotFound();
-
-                    var departures = await sl.GetDepartures(site.Id);
-
-                    if (departures is null || departures.Count == 0)
-                        return Results.NotFound();
-
-                    var result = departures
-                        .Where(d => line == null || d.LineId == line)
-                        .OrderBy(d => d.Expected)
-                        .Take(10)
-                        .Select(Map)
-                        .ToList();
-
-                    return Results.Ok(new
-                    {
-                        site = site.Name,
-                        count = result.Count,
-                        departures = result
-                    });
-        });
-
-        group.MapGet("/sites/search", async (string query, SlService sl) =>
         {
-            var sites = await sl.SearchSites(query);
-            var site = ResolveBestSite(sites, query);
+            var site = (await sl.SearchSites(query)).FirstOrDefault();
 
             if (site is null)
-                return Results.NotFound("No matching stop found");
+                return Results.NotFound();
 
-            return Results.Ok(site);
+            var departures = await sl.GetDepartures(site.Id);
+
+            if (departures is null || departures.Count == 0)
+                return Results.NotFound();
+
+            var result = departures
+                .Where(d => line == null || d.LineId == line)
+                .OrderBy(d => d.Expected)
+                .Take(10)
+                .Select(d => new DepartureDto
+                {
+                    Line = d.LineId,
+                    Destination = d.Destination,
+                    DepartureIn = d.Display,
+                    Expected = d.Expected
+                })
+                .ToList();
+
+            return Results.Ok(new
+            {
+                site = site.Name,
+                count = result.Count,
+                departures = result
+            });
         });
 
+        // 2. Stop Finder (Sök stationer på namn)
+        group.MapGet("/search-stop", async (string query, ITripService tripService, CancellationToken ct) =>
+        {
+            var stops = await tripService.FindBestStopAsync(query, ct);
+            return Results.Ok(stops);
+        });
 
-
-
-
-
-    }
-
-    private static SiteDto? ResolveBestSite(List<SiteDto> sites, string query)
-    {
-        query = query.Trim().ToLower();
-
-        return sites
-            .Select(site => new
-            {
-                Site = site,
-                Score = GetScore(site.Name, query)
-            })
-            .Where(x => x.Score > 0)
-            .OrderByDescending(x => x.Score)
-            .Select(x => x.Site)
-            .FirstOrDefault();
-    }
-
-    private static int GetScore(string name, string query)
-    {
-        name = name.ToLower();
-
-        if (name == query)
-            return 100;
-
-        if (name.StartsWith(query))
-            return 75;
-
-        if (name.Contains(query))
-            return 50;
-
-        return 0;
-    }
-
-    private static DepartureDto Map(SlDeparture d) =>
-    new()
-    {
-        Line = d.LineId,
-        Destination = d.Destination,
-        DepartureIn = d.Display,
-        Expected = d.Expected
-    };
-
-    private static SlDeparture? GetNext(IEnumerable<SlDeparture> deps, Func<SlDeparture, bool> predicate)
-    {
-        return deps
-            .Where(predicate)
-            .OrderBy(d => d.Expected)
-            .FirstOrDefault();
+        // 3. Ruttplanerare (Hämtar resvägar med byten och tider)
+        group.MapGet("/route", async (string originId, string destinationId, string? date, string? time, ITripService tripService, CancellationToken ct) =>
+        {
+            var trips = await tripService.GetTripsAsync(originId, destinationId, date, time, ct);
+            return Results.Ok(trips);
+        });
     }
 }
