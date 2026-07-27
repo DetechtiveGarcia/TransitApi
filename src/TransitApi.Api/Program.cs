@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.OpenApi;
 using TransitApi.Api.Endpoints;
+using TransitApi.Api.Interfaces;
 using TransitApi.Api.OpenAi;
 using TransitApi.Api.OpenApi;
 using TransitApi.Api.Services;
@@ -12,6 +13,7 @@ builder.Services.Configure<OpenAiOptions>(
 builder.Services.AddOpenApi();
 builder.Services.AddScoped<AiService>();
 builder.Services.AddHttpClient<SlService>();
+builder.Services.AddHttpClient<ITripService, TripService>();
 builder.Services.AddHttpClient();
 
 var app = builder.Build();
