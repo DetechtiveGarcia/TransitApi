@@ -25,61 +25,15 @@ public static class AiEndpoints
         });
     }
 
-    private static async Task<JsonElement> CallOpenAi(
-        HttpClient http,
-        List<object> messages,
-        object[]? tools,
-        string apiKey)
-    {
-        var requestBody = new
-        {
-            model = "gpt-4o-mini",
-            messages,
-            tools,
-            tool_choice = tools is null ? null : "auto"
-        };
-
-        var req = new HttpRequestMessage(
-            HttpMethod.Post,
-            "https://api.openai.com/v1/chat/completions"
-        );
-
-        req.Headers.Authorization =
-            new AuthenticationHeaderValue("Bearer", apiKey);
-
-        req.Content = new StringContent(
-            JsonSerializer.Serialize(requestBody),
-            Encoding.UTF8,
-            "application/json"
-        );
-
-        var res = await http.SendAsync(req);
-        var json = await res.Content.ReadAsStringAsync();
-
-        Console.WriteLine("STATUS: " + res.StatusCode);
-        Console.WriteLine("OPENAI RAW RESPONSE:");
-        Console.WriteLine(json);
-
-
-        if (!res.IsSuccessStatusCode)
-        {
-            var errorBody = await res.Content.ReadAsStringAsync();
-
-            Console.WriteLine("OPENAI ERROR BODY:");
-            Console.WriteLine(errorBody);
-
-            throw new Exception($"OpenAI failed: {(int)res.StatusCode}");
-        }
-
-        return JsonDocument.Parse(json).RootElement;
-    }
+    
 
     // 🧩 TOOL HANDLERS (kopplar AI → din backend)
 
-    private static async Task<object> HandleNext(SlService sl, JsonDocument args)
+    public static async Task<object> ExecuteNextDepartureTool(SlService sl, JsonDocument args)
     {
         var query = args.RootElement.GetProperty("query").GetString()!;
         var line = args.RootElement.GetProperty("line").GetInt32();
+        var destination = args.RootElement.TryGetProperty("destination", out var dest) ? dest.GetString() : null;
 
         var site = (await sl.SearchSites(query)).FirstOrDefault();
         if (site is null) return new { error = "site not found" };
@@ -88,25 +42,37 @@ public static class AiEndpoints
 
         SlDeparture? next = departures
             .Where(d => d.LineId == line)
+            .Where(d => string.IsNullOrEmpty(destination) || 
+                d.Destination.Contains(destination, StringComparison.OrdinalIgnoreCase) ||
+                d.Direction.Contains(destination, StringComparison.OrdinalIgnoreCase))
             .OrderBy(d => d.Expected)
             .FirstOrDefault();
 
         return next is null
-            ? new { error = "no departures" }
+            ? new
+            {
+                status = "no_match_found",
+                message = $"Ingen avgång hittades för linje {line}.",
+                available_departures = departures.OrderBy(d => d.Expected).Take(5).ToList()
+            }
             : next;
     }
 
-    private static async Task<object> HandleDepartures(SlService sl, JsonDocument args)
+    public static async Task<object> HandleDepartures(SlService sl, JsonDocument args)
     {
         var query = args.RootElement.GetProperty("query").GetString()!;
+
+        string? transport = args.RootElement.TryGetProperty("transport", out var t) ? t.GetString() : null;
+
+        Console.WriteLine("Transport type: " + transport);
 
         var site = (await sl.SearchSites(query)).FirstOrDefault();
         if (site is null) return new { error = "site not found" };
 
-        return await sl.GetDepartures(site.Id);
+        return await sl.GetDepartures(site.Id, transport);
     }
 
-    private static async Task<object> HandleSearch(SlService sl, JsonDocument args)
+    public static async Task<object> HandleSearch(SlService sl, JsonDocument args)
     {
         var query = args.RootElement.GetProperty("query").GetString()!;
         return await sl.SearchSites(query);

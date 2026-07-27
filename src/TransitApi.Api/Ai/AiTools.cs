@@ -10,14 +10,16 @@ public static class AiTools
             function = new
             {
                 name = "get_next_departure",
-                description = "Get next bus departure by stop and line",
+                description = "Get the single next departure for a specific line at a stop. Use this for specific questions like 'When is the next bus 19?'",
                 parameters = new
                 {
                     type = "object",
                     properties = new
                     {
-                        query = new { type = "string" },
-                        line = new { type = "integer" }
+                        query = new { type = "string", description = "The name of the stop or station" },
+                        line = new { type = "integer", description = "The line number (e.g., 19, 444)" },
+                        destination = new { type = "string", description = "The name of the final stop" },
+                        transport = new { type = "string", description = "Optional: The transport type (e.g., BUS, METRO, TRAIN, TRAM, FERRY)" }
                     },
                     required = new[] { "query", "line" }
                 }
@@ -30,13 +32,15 @@ public static class AiTools
             function = new
             {
                 name = "get_departures",
-                description = "Get multiple upcoming departures from a stop",
+                description = "Get upcoming departures for a specific station/site. Can filter by transport type (METRO, BUS, TRAIN, TRAM, SHIP).",
                 parameters = new
                 {
                     type = "object",
                     properties = new
                     {
-                        query = new { type = "string" }
+                        query = new { type = "string", description = "The name of the stop or station" },
+                        destination = new { type = "string", description = "Optional: The destination of the trip to filter by" },
+                        transport = new { type = "string", description = "Optional filter: The transport type (e.g., BUS, METRO, TRAIN, TRAM, FERRY)" }
                     },
                     required = new[] { "query" }
                 }
@@ -49,13 +53,13 @@ public static class AiTools
             function = new
             {
                 name = "search_stops",
-                description = "Find nearest matching stop by name",
+                description = "Search for a stop or station name in Stockholm to get its ID.",
                 parameters = new
                 {
                     type = "object",
                     properties = new
                     {
-                        query = new { type = "string" }
+                        query = new { type = "string", description = "The search term for the stop" }
                     },
                     required = new[] { "query" }
                 }
