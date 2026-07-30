@@ -44,6 +44,7 @@ public class AiService
                         3. If the user asks about a single station only, use `get_departures`.
                         4. LANGUAGE: Always respond in the same language as the user.
                         5. Correct Swedish: Use 'avgår' for departures.
+                        6. Do not end responses with conversational filler questions
 
                         OTHER RULES:
                         - LANGUAGE: Always respond in the same language as the user.
