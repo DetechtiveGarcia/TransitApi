@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.OpenApi;
+using TransitApi.Api;
 using TransitApi.Api.Endpoints;
 using TransitApi.Api.Interfaces;
 using TransitApi.Api.OpenAi;
@@ -12,6 +13,7 @@ builder.Services.Configure<OpenAiOptions>(
 
 builder.Services.AddOpenApi();
 builder.Services.AddScoped<AiService>();
+builder.Services.AddScoped<AudioService>();
 builder.Services.AddHttpClient<SlService>();
 builder.Services.AddHttpClient<ITripService, TripService>();
 builder.Services.AddHttpClient();
